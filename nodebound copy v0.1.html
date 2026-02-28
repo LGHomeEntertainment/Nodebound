@@ -85,6 +85,7 @@
         currentCommand: "",
         lastTime: performance.now(),
         scanTime: 3000,
+        breachTime: 2500,
         connectTime: 1500,
 
         overclockLevel: 0,
@@ -134,6 +135,7 @@
 
       function getExpectedCommand() {
         if (state.phase === "idle") return "scan";
+        if (state.phase === "breach_ready") return "breach";
         if (state.phase === "connect_ready") return "connect";
         return null;
       }
@@ -156,25 +158,27 @@
         if (cmd === "scan") {
           state.phase = "scanning";
           await printLine("> scan");
-          const variance = state.scanTime * 0.1; // 10%
-          const actualTime =
-            state.scanTime + (Math.random() * variance - variance / 2);
-          await progressAnimation("Scanning", actualTime);
+          await printLine("Scanning...");
+          await delay(state.scanTime);
 
           if (Math.random() < 0.1) {
             await printLine("No node found.");
             state.phase = "idle";
           } else {
             await printLine("Node Found.");
-            state.phase = "connect_ready";
+            state.phase = "breach_ready";
           }
+        } else if (cmd === "breach") {
+          state.phase = "breaching";
+          await printLine("> breach");
+          await printLine("Decrypting...");
+          await delay(state.breachTime);
+          await printLine("Breach successful.");
+          state.phase = "connect_ready";
         } else if (cmd === "connect") {
           state.phase = "connecting";
           await printLine("> connect");
-          const variance = state.connectTime * 0.1; // 10%
-          const actualTime =
-            state.connectTime + (Math.random() * variance - variance / 2);
-          await progressAnimation("Connecting", state.connectTime);
+          await delay(state.connectTime);
           state.nodes += 1;
           state.bandwidth += 5;
           await printLine("Node integrated. Bandwidth +5.");
@@ -186,23 +190,6 @@
         return new Promise((resolve) => setTimeout(resolve, ms));
       }
 
-      async function progressAnimation(label, duration) {
-  const line = document.createElement("div");
-  terminal.appendChild(line);
-
-  let dots = 0;
-  const interval = 750;
-
-  const start = performance.now();
-
-  while (performance.now() - start < duration) {
-    dots++;
-    line.textContent = label + " " + ".".repeat(dots);
-    terminal.scrollTop = terminal.scrollHeight;
-    await delay(interval);
-  }
-}
-
       function updateShop() {
         shop.innerHTML = `
     [1] Overclock CPU (Lv ${state.overclockLevel})
@@ -211,14 +198,15 @@
       }
 
       function buyOverclock() {
-        const cost = 50 + state.overclockLevel * 50;
-        if (state.bandwidth >= cost) {
-          state.bandwidth -= cost;
-          state.overclockLevel++;
-          state.scanTime = Math.max(1000, (state.scanTime *= 0.85));
-          printLine("CPU Overclocked. Scan speed increased.");
-        }
-      }
+  const cost = 50 + state.overclockLevel * 50;
+  if (state.bandwidth >= cost) {
+    state.bandwidth -= cost;
+    state.overclockLevel++;
+    state.scanTime = Math.max(1000, state.scanTime *= 0.85);
+    printLine("CPU Overclocked. Scan speed increased.");
+  }
+}
+
 
       // == Clicky clicky ==
       document.body.addEventListener("click", handleClick);
