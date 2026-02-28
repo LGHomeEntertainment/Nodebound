@@ -1,0 +1,187 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Nodebound Idle v0.1</title>
+    <style>
+      body {
+        background: black;
+        color: #33ff33;
+        font-family: monospace;
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+
+        user-select: none; /* disables text highlight */
+      }
+
+      #game {
+        width: 800px;
+        height: 500px;
+        border: 2px solid #33ff33;
+        padding: 15px;
+        display: flex;
+        flex-direction: column;
+        
+      }
+
+      #hud {
+        margin-bottom: 10px;
+      }
+
+#terminal {
+  flex: 1;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  padding-bottom: 15px;
+}
+
+      #input {
+        color: darkgrey;
+        margin-top: 10px;
+      }
+
+      .cursor {
+        display: inline-block;
+        width: 10px;
+        background: #33ff33;
+        animation: blink 1s infinite;
+      }
+
+      @keyframes blink {
+        50% {
+          opacity: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game">
+      <div id="hud"></div>
+      <div id="terminal"></div>
+      <div id="input">
+        > <span id="command"></span><span class="cursor"></span>
+      </div>
+    </div>
+
+    <script>
+      const hud = document.getElementById("hud");
+      const terminal = document.getElementById("terminal");
+      const commandEl = document.getElementById("command");
+
+      let state = {
+        nodes: 0,
+        bandwidth: 0,
+        bandwidthPerNode: 0.2,
+        phase: "idle",
+        currentCommand: "",
+        lastTime: performance.now(),
+      };
+
+      function updateHUD() {
+        const bwPerSec = state.nodes * state.bandwidthPerNode;
+        hud.innerText =
+          "Nodes: " +
+          state.nodes +
+          " | Bandwidth: " +
+          state.bandwidth.toFixed(1) +
+          " | BW/sec: " +
+          bwPerSec.toFixed(2);
+      }
+
+      function gameLoop(now) {
+        const delta = (now - state.lastTime) / 1000;
+        state.lastTime = now;
+
+        state.bandwidth += state.nodes * state.bandwidthPerNode * delta;
+
+        updateHUD();
+        requestAnimationFrame(gameLoop);
+      }
+
+      function printLine(text, speed = 50) {
+        terminal.scrollTop = terminal.scrollHeight;
+        return new Promise((resolve) => {
+          let i = 0;
+          const line = document.createElement("div");
+          terminal.appendChild(line);
+
+          function type() {
+            if (i < text.length) {
+              line.textContent += text[i];
+              i++;
+              setTimeout(type, speed);
+            } else {
+              resolve();
+            }
+          }
+          type();
+        });
+      }
+
+      function getExpectedCommand() {
+        if (state.phase === "idle") return "scan";
+        if (state.phase === "breach_ready") return "breach";
+        if (state.phase === "connect_ready") return "connect";
+        return null;
+      }
+
+      function handleClick() {
+        const expected = getExpectedCommand();
+        if (!expected) return;
+
+        state.currentCommand += expected[state.currentCommand.length];
+        commandEl.textContent = state.currentCommand;
+
+        if (state.currentCommand === expected) {
+          executeCommand(expected);
+          state.currentCommand = "";
+          commandEl.textContent = "";
+        }
+      }
+
+      async function executeCommand(cmd) {
+        if (cmd === "scan") {
+          state.phase = "scanning";
+          await printLine("> scan");
+          await printLine("Scanning...");
+          await delay(3000);
+
+          if (Math.random() < 0.1) {
+            await printLine("No node found.");
+            state.phase = "idle";
+          } else {
+            await printLine("Node Found.");
+            state.phase = "breach_ready";
+          }
+        } else if (cmd === "breach") {
+          state.phase = "breaching";
+          await printLine("> breach");
+          await printLine("Decrypting...");
+          await delay(2500);
+          await printLine("Breach successful.");
+          state.phase = "connect_ready";
+        } else if (cmd === "connect") {
+          state.phase = "connecting";
+          await printLine("> connect");
+          await delay(1500);
+          state.nodes += 1;
+          state.bandwidth += 5;
+          await printLine("Node integrated. Bandwidth +5.");
+          state.phase = "idle";
+        }
+      }
+
+      function delay(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      document.body.addEventListener("click", handleClick);
+
+      updateHUD();
+      requestAnimationFrame(gameLoop);
+    </script>
+  </body>
+</html>
