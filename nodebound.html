@@ -26,7 +26,7 @@
         transition: opacity 1.8s ease;
       }
 
-      #game {
+      #gameArea {
         position: relative;
         width: 800px;
         height: 500px;
@@ -56,12 +56,39 @@
         margin-top: 10px;
       }
 
-      #shop {
-        opacity: 0;
-        transition: opacity 0.6s ease;
-        border-top: 1px solid #33ff33;
-        padding-top: 10px;
+      #shopButton {
+        margin-top: 6px;
         font-size: 14px;
+        color: #33ff33;
+        cursor: pointer;
+        opacity: 0.8;
+      }
+
+      #shopButton:hover {
+        opacity: 1;
+      }
+
+#shopPanel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+
+  width: 350px;
+  background: black;
+  border: 2px solid #33ff33;
+  padding: 15px;
+  color: #33ff33;
+
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+  z-index: 10;
+}
+
+      #shopPanel.open {
+        opacity: 1;
+        pointer-events: auto;
       }
 
       .cursor {
@@ -111,32 +138,40 @@
     </style>
   </head>
   <body>
-    <div id="game">
+    <div id="gameArea">
       <div id="blackscreen"></div>
       <div id="hud"></div>
       <div id="terminal"></div>
-      <div id="shop" onclick="showShop()">[ Upgrades ]</div>
       <div id="input">
         > <span id="command"></span><span class="cursor"></span>
       </div>
+      <div id="shopButton">[ Upgrades ]</div>
+      <div id="shopPanel"></div>
     </div>
 
     <script>
+      // =======================
+      // DOM REFERENCES
+      // =======================
+      const hud = document.getElementById("hud");
+      const terminal = document.getElementById("terminal");
+      const commandEl = document.getElementById("command");
+      const gameArea = document.getElementById("gameArea");
+      const black = document.getElementById("blackscreen");
+      const shopButton = document.getElementById("shopButton");
+      const shopPanel = document.getElementById("shopPanel");
+      let shopOpen = false;
+
+      // =======================
+      // CONFIG
+      // =======================
       let devMode = false;
       let devLayer = 1;
       let devStartBW = 500;
 
-      const hud = document.getElementById("hud");
-      const terminal = document.getElementById("terminal");
-      const commandEl = document.getElementById("command");
-      const shop = document.getElementById("shop");
-      const game = document.getElementById("game");
-
-      document.addEventListener("DOMContentLoaded", initialise);
-      function initialise() {
-        game.classList.add("framed");
-      }
-
+      // =======================
+      // GAME STATE
+      // =======================
       let state = {
         layer: 0,
         nodes: 0,
@@ -152,24 +187,54 @@
         autoLevel: 0,
       };
 
-      function initialiseLayer(layerNumber) {
-        state.layer = layerNumber;
+      // =======================
+      // UPGRADE SYSTEM
+      // =======================
+      const upgrades = {
+        overclock: {
+          key: "1",
+          getLevel: () => state.overclockLevel,
+          getCost: () => 50 + state.overclockLevel * 50,
+          purchase: () => {
+            state.overclockLevel++;
+            state.scanTime = Math.max(1000, state.scanTime * 0.85);
+            printLine("CPU Overclocked. Scan speed increased.");
+          },
+        },
+      };
 
-        if (layerNumber == 0) {
-          // Tutorial
-          state.nodes = 0;
-          state.bandwidth = 0;
-          state.phase = "idle";
+      function renderShop() {
+        let output = "=== Upgrade Interface ===\n\n";
+
+        for (const id in upgrades) {
+          const upg = upgrades[id];
+          const level = upg.getLevel();
+          const cost = upg.getCost();
+
+          output += `${upg.key}) CPU Overclock (Lv ${level}) .... ${cost} BW\n`;
         }
 
-        if (layerNumber == 1) {
-          // First PC
-          state.nodes = 0;
-          state.bandwidth = devMode ? devStartBW : 0;
-          state.phase = "idle";
+        shopPanel.innerText = output;
+      }
+
+      // =======================
+      // UTILITIES (Pure Helper Functions)
+      // =======================
+      function delay(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      function setInputEnabled(enabled) {
+        if (enabled) {
+          document.body.style.pointerEvents = "auto";
+        } else {
+          document.body.style.pointerEvents = "none";
         }
       }
 
+      // =======================
+      // RENDER SYSTEM
+      // =======================
       function updateHUD() {
         const bwPerSec = state.nodes * state.bandwidthPerNode;
         hud.innerText =
@@ -181,17 +246,84 @@
           bwPerSec.toFixed(2);
       }
 
-      function gameLoop(now) {
-        const delta = (now - state.lastTime) / 1000;
-        state.lastTime = now;
+      function updateShop() {
+        if (state.layer === 0) return;
 
-        state.bandwidth += state.nodes * state.bandwidthPerNode * delta;
+        let output = "";
 
-        updateHUD();
-        updateShop();
-        requestAnimationFrame(gameLoop);
+        for (const id in upgrades) {
+          const upg = upgrades[id];
+          const level = upg.getLevel();
+          const cost = upg.getCost();
+
+          output += `[${upg.key}] Overclock CPU (Lv ${level})
+Cost: ${cost} BW\n\n`;
+        }
+
+        shop.innerText = output;
       }
 
+      // =======================
+      // INPUT SYSTEM
+      // =======================
+      function getExpectedCommand() {
+        if (state.phase === "idle") return "scan ";
+        if (state.phase === "connect_ready") return "connect ";
+        return null;
+      }
+
+      function handleClick() {
+        if (state.phase !== "idle" && state.phase !== "connect_ready") return;
+
+        const expected = getExpectedCommand();
+        if (!expected) return;
+
+        state.currentCommand += expected[state.currentCommand.length];
+        commandEl.textContent = state.currentCommand;
+
+        if (state.currentCommand === expected) {
+          executeCommand(expected);
+          state.currentCommand = "";
+          commandEl.textContent = "";
+        }
+      }
+
+      document
+        .getElementById("gameArea")
+        .addEventListener("click", handleClick);
+
+      document.addEventListener("keydown", (e) => {
+        for (const id in upgrades) {
+          const upg = upgrades[id];
+          if (e.key === upg.key) {
+            const cost = upg.getCost();
+            if (state.bandwidth >= cost) {
+              state.bandwidth -= cost;
+              upg.purchase();
+            }
+          }
+        }
+      });
+
+      shopButton.addEventListener("click", (e) => {
+        e.stopPropagation();
+        shopOpen = !shopOpen;
+
+        if (shopOpen) {
+          renderShop();
+          shopPanel.classList.add("open");
+        } else {
+          shopPanel.classList.remove("open");
+        }
+      });
+
+      shopPanel.addEventListener("click", (e) => {
+        e.stopPropagation();
+      });
+
+      // =======================
+      // COMMAND SYSTEM
+      // =======================
       async function printLine(text, speed = 50) {
         state.inputLocked = true;
 
@@ -216,31 +348,9 @@
         });
       }
 
-      function getExpectedCommand() {
-        if (state.phase === "idle") return "scan";
-        if (state.phase === "connect_ready") return "connect";
-        return null;
-      }
-
-      function handleClick() {
-        if (state.phase !== "idle" && state.phase !== "connect_ready") return;
-
-        const expected = getExpectedCommand();
-        if (!expected) return;
-
-        state.currentCommand += expected[state.currentCommand.length];
-        commandEl.textContent = state.currentCommand;
-
-        if (state.currentCommand === expected) {
-          executeCommand(expected);
-          state.currentCommand = "";
-          commandEl.textContent = "";
-        }
-      }
-
       async function executeCommand(cmd) {
         setInputEnabled(false);
-        if (cmd === "scan") {
+        if (cmd === "scan ") {
           state.phase = "scanning";
           await printLine("> scan");
           const variance = state.scanTime * 0.1; // 10%
@@ -265,7 +375,7 @@
             setInputEnabled(true);
             state.phase = "connect_ready";
           }
-        } else if (cmd === "connect") {
+        } else if (cmd === "connect ") {
           state.phase = "connecting";
           await printLine("> connect");
           const variance = state.connectTime * 0.1; // 10%
@@ -282,16 +392,16 @@
             await delay(1500);
 
             // quick flicker
-            game.classList.add("flash");
+            gameArea.classList.add("flash");
             await delay(550);
-            game.classList.remove("flash");
+            gameArea.classList.remove("flash");
 
             await printLine(">>> Network capacity reached.");
             await delay(2000);
             // quick flicker
-            game.classList.add("flash");
+            gameArea.classList.add("flash");
             await delay(550);
-            game.classList.remove("flash");
+            gameArea.classList.remove("flash");
 
             await transitionToLayer1();
             return;
@@ -299,10 +409,6 @@
           setInputEnabled(true);
           state.phase = "idle";
         }
-      }
-
-      function delay(ms) {
-        return new Promise((resolve) => setTimeout(resolve, ms));
       }
 
       async function progressAnimation(label, duration) {
@@ -326,7 +432,6 @@
       }
 
       async function transitionToLayer1() {
-        const black = document.getElementById("blackscreen");
         setInputEnabled(false);
         state.phase = "locked";
         await delay(500);
@@ -335,11 +440,11 @@
         await printLine(">>> System overload.");
         await delay(500);
 
-        game.classList.add("blinking");
+        gameArea.classList.add("blinking");
         await delay(600);
-        game.classList.remove("blinking");
+        gameArea.classList.remove("blinking");
 
-        game.classList.remove("framed");
+        gameArea.classList.remove("framed");
 
         black.style.opacity = 1;
         await delay(2000);
@@ -352,15 +457,15 @@
 
         // ensure visuals are off
         hud.style.opacity = 0;
-        shop.style.opacity = 0;
+        shopButton.style.opacity = 0;
 
         await delay(800);
 
         // new machine case appears
-        game.classList.add("framed");
-        game.classList.add("blinking");
+        gameArea.classList.add("framed");
+        gameArea.classList.add("blinking");
         await delay(600);
-        game.classList.remove("blinking");
+        gameArea.classList.remove("blinking");
 
         black.style.opacity = 0;
         await delay(800);
@@ -377,7 +482,7 @@
 
         await printLine(">>> Initialising upgrades...");
         await delay(1200);
-        shop.style.opacity = 1;
+        shopButton.style.opacity = 1;
         await delay(800);
         await printLine(">>> Upgrade interface initialized.");
 
@@ -387,66 +492,57 @@
         state.phase = "idle";
       }
 
-      const upgrades = {
-        overclock: {
-          key: "1",
-          getLevel: () => state.overclockLevel,
-          getCost: () => 50 + state.overclockLevel * 50,
-          purchase: () => {
-            state.overclockLevel++;
-            state.scanTime = Math.max(1000, state.scanTime * 0.85);
-            printLine("CPU Overclocked. Scan speed increased.");
-          },
-        },
-      };
+      // =======================
+      // LAYER SYSTEM
+      // =======================
+      function initialiseLayer(layerNumber) {
+        state.layer = layerNumber;
 
-      function updateShop() {
-        if (state.layer === 0) return;
-
-        let output = "";
-
-        for (const id in upgrades) {
-          const upg = upgrades[id];
-          const level = upg.getLevel();
-          const cost = upg.getCost();
-
-          output += `[${upg.key}] Overclock CPU (Lv ${level})
-Cost: ${cost} BW\n\n`;
+        if (layerNumber == 0) {
+          // Tutorial
+          state.nodes = 0;
+          state.bandwidth = 0;
+          state.phase = "idle";
+          shopButton.style.opacity = 0;
         }
 
-        shop.innerText = output;
-      }
-
-      // == Clicky clicky ==
-      function setInputEnabled(enabled) {
-        if (enabled) {
-          document.body.style.pointerEvents = "auto";
-        } else {
-          document.body.style.pointerEvents = "none";
+        if (layerNumber == 1) {
+          // First PC
+          state.nodes = 0;
+          state.bandwidth = devMode ? devStartBW : 0;
+          state.phase = "idle";
         }
       }
 
-      document.body.addEventListener("click", handleClick);
+      // =======================
+      // GAME LOOP
+      // =======================
+      function gameLoop(now) {
+        const delta = (now - state.lastTime) / 1000;
+        state.lastTime = now;
 
-      document.addEventListener("keydown", (e) => {
-        for (const id in upgrades) {
-          const upg = upgrades[id];
-          if (e.key === upg.key) {
-            const cost = upg.getCost();
-            if (state.bandwidth >= cost) {
-              state.bandwidth -= cost;
-              upg.purchase();
-            }
-          }
-        }
-      });
+        state.bandwidth += state.nodes * state.bandwidthPerNode * delta;
 
+        updateHUD();
+        requestAnimationFrame(gameLoop);
+      }
+
+      // =======================
+      // BOOT SEQUENCE
+      // =======================
       async function boot() {
         setInputEnabled(false);
 
         if (devMode) {
           initialiseLayer(devLayer);
           terminal.innerHTML = "";
+
+          // Enable visuals immediately for dev
+          if (devLayer >= 1) {
+            hud.style.opacity = 1;
+            shopButton.style.opacity = 1;
+          }
+
           await printLine(">>> DEV MODE ACTIVE");
           await printLine(">>> Layer " + devLayer + " initialised.");
         } else {
@@ -456,6 +552,8 @@ Cost: ${cost} BW\n\n`;
 
         setInputEnabled(true);
       }
+
+      gameArea.classList.add("framed");
 
       boot();
 
