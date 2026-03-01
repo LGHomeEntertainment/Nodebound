@@ -17,24 +17,38 @@
         user-select: none; /* disables text highlight */
       }
 
+      #blackscreen {
+        position: absolute;
+        inset: 0;
+        background: black;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 1.8s ease;
+      }
+
       #game {
+        position: relative;
         width: 800px;
         height: 500px;
-        border: 2px solid #33ff33;
         padding: 15px;
         display: flex;
         flex-direction: column;
       }
 
+      .framed {
+        border: 2px solid #33ff33;
+      }
+
       #hud {
-        margin-bottom: 10px;
+        opacity: 0;
+        transition: opacity 0.6s ease;
       }
 
       #terminal {
         flex: 1;
         overflow-y: auto;
         white-space: pre-wrap;
-        padding-bottom: 15px;
+        padding-bottom: 18px;
       }
 
       #input {
@@ -43,6 +57,8 @@
       }
 
       #shop {
+        opacity: 0;
+        transition: opacity 0.6s ease;
         border-top: 1px solid #33ff33;
         padding-top: 10px;
         font-size: 14px;
@@ -60,27 +76,72 @@
           opacity: 0;
         }
       }
+
+      @keyframes borderBlink {
+        0% {
+          border-color: #33ff33;
+        }
+        50% {
+          border-color: transparent;
+        }
+        100% {
+          border-color: #33ff33;
+        }
+      }
+
+      @keyframes screenFlash {
+        0% {
+          background: black;
+        }
+        50% {
+          background: white;
+        }
+        100% {
+          background: black;
+        }
+      }
+
+      .flash {
+        animation: screenFlash 0.35s ease;
+      }
+
+      .blinking {
+        animation: borderBlink 0.4s ease 2;
+      }
     </style>
   </head>
   <body>
     <div id="game">
+      <div id="blackscreen"></div>
       <div id="hud"></div>
       <div id="terminal"></div>
-      <div id="shop"></div>
+      <div id="shop" onclick="showShop()">[ Upgrades ]</div>
       <div id="input">
         > <span id="command"></span><span class="cursor"></span>
       </div>
     </div>
 
     <script>
+      let devMode = false;
+      let devLayer = 1;
+      let devStartBW = 500;
+
       const hud = document.getElementById("hud");
       const terminal = document.getElementById("terminal");
       const commandEl = document.getElementById("command");
+      const shop = document.getElementById("shop");
+      const game = document.getElementById("game");
+
+      document.addEventListener("DOMContentLoaded", initialise);
+      function initialise() {
+        game.classList.add("framed");
+      }
 
       let state = {
+        layer: 0,
         nodes: 0,
         bandwidth: 0,
-        bandwidthPerNode: 0.2,
+        bandwidthPerNode: 0.1,
         phase: "idle",
         currentCommand: "",
         lastTime: performance.now(),
@@ -88,7 +149,26 @@
         connectTime: 1500,
 
         overclockLevel: 0,
+        autoLevel: 0,
       };
+
+      function initialiseLayer(layerNumber) {
+        state.layer = layerNumber;
+
+        if (layerNumber == 0) {
+          // Tutorial
+          state.nodes = 0;
+          state.bandwidth = 0;
+          state.phase = "idle";
+        }
+
+        if (layerNumber == 1) {
+          // First PC
+          state.nodes = 0;
+          state.bandwidth = devMode ? devStartBW : 0;
+          state.phase = "idle";
+        }
+      }
 
       function updateHUD() {
         const bwPerSec = state.nodes * state.bandwidthPerNode;
@@ -112,8 +192,11 @@
         requestAnimationFrame(gameLoop);
       }
 
-      function printLine(text, speed = 50) {
+      async function printLine(text, speed = 50) {
+        state.inputLocked = true;
+
         terminal.scrollTop = terminal.scrollHeight;
+
         return new Promise((resolve) => {
           let i = 0;
           const line = document.createElement("div");
@@ -125,6 +208,7 @@
               i++;
               setTimeout(type, speed);
             } else {
+              state.inputLocked = false;
               resolve();
             }
           }
@@ -139,6 +223,8 @@
       }
 
       function handleClick() {
+        if (state.phase !== "idle" && state.phase !== "connect_ready") return;
+
         const expected = getExpectedCommand();
         if (!expected) return;
 
@@ -153,6 +239,7 @@
       }
 
       async function executeCommand(cmd) {
+        setInputEnabled(false);
         if (cmd === "scan") {
           state.phase = "scanning";
           await printLine("> scan");
@@ -161,11 +248,21 @@
             state.scanTime + (Math.random() * variance - variance / 2);
           await progressAnimation("Scanning", actualTime);
 
-          if (Math.random() < 0.1) {
+          let success = true;
+
+          if (state.layer === 0) {
+            success = true; // tutorial always succeeds
+          } else {
+            success = Math.random() >= 0.1; // 10% fail from layer 1+
+          }
+
+          if (!success) {
             await printLine("No node found.");
+            setInputEnabled(true);
             state.phase = "idle";
           } else {
             await printLine("Node Found.");
+            setInputEnabled(true);
             state.phase = "connect_ready";
           }
         } else if (cmd === "connect") {
@@ -174,10 +271,32 @@
           const variance = state.connectTime * 0.1; // 10%
           const actualTime =
             state.connectTime + (Math.random() * variance - variance / 2);
-          await progressAnimation("Connecting", state.connectTime);
+          await progressAnimation("Connecting", actualTime);
           state.nodes += 1;
           state.bandwidth += 5;
           await printLine("Node integrated. Bandwidth +5.");
+
+          if (!devMode && state.layer == 0 && state.nodes >= 1) {
+            state.phase = "locked";
+
+            await delay(1500);
+
+            // quick flicker
+            game.classList.add("flash");
+            await delay(550);
+            game.classList.remove("flash");
+
+            await printLine(">>> Network capacity reached.");
+            await delay(2000);
+            // quick flicker
+            game.classList.add("flash");
+            await delay(550);
+            game.classList.remove("flash");
+
+            await transitionToLayer1();
+            return;
+          }
+          setInputEnabled(true);
           state.phase = "idle";
         }
       }
@@ -187,47 +306,158 @@
       }
 
       async function progressAnimation(label, duration) {
-  const line = document.createElement("div");
-  terminal.appendChild(line);
+        state.inputLocked = true;
 
-  let dots = 0;
-  const interval = 750;
+        const line = document.createElement("div");
+        terminal.appendChild(line);
 
-  const start = performance.now();
+        let dots = 0;
+        const interval = 750;
+        const start = performance.now();
 
-  while (performance.now() - start < duration) {
-    dots++;
-    line.textContent = label + " " + ".".repeat(dots);
-    terminal.scrollTop = terminal.scrollHeight;
-    await delay(interval);
-  }
-}
+        while (performance.now() - start < duration) {
+          dots++;
+          line.textContent = label + " " + ".".repeat(dots);
+          terminal.scrollTop = terminal.scrollHeight;
+          await delay(interval);
+        }
 
-      function updateShop() {
-        shop.innerHTML = `
-    [1] Overclock CPU (Lv ${state.overclockLevel})
-    Cost: ${50 + state.overclockLevel * 50} BW
-  `;
+        state.inputLocked = false;
       }
 
-      function buyOverclock() {
-        const cost = 50 + state.overclockLevel * 50;
-        if (state.bandwidth >= cost) {
-          state.bandwidth -= cost;
-          state.overclockLevel++;
-          state.scanTime = Math.max(1000, (state.scanTime *= 0.85));
-          printLine("CPU Overclocked. Scan speed increased.");
+      async function transitionToLayer1() {
+        const black = document.getElementById("blackscreen");
+        setInputEnabled(false);
+        state.phase = "locked";
+        await delay(500);
+
+        // old machine overload
+        await printLine(">>> System overload.");
+        await delay(500);
+
+        game.classList.add("blinking");
+        await delay(600);
+        game.classList.remove("blinking");
+
+        game.classList.remove("framed");
+
+        black.style.opacity = 1;
+        await delay(2000);
+
+        terminal.innerHTML = "";
+
+        // switch logic only
+        state.layer = 1;
+        initialiseLayer(1);
+
+        // ensure visuals are off
+        hud.style.opacity = 0;
+        shop.style.opacity = 0;
+
+        await delay(800);
+
+        // new machine case appears
+        game.classList.add("framed");
+        game.classList.add("blinking");
+        await delay(600);
+        game.classList.remove("blinking");
+
+        black.style.opacity = 0;
+        await delay(800);
+
+        // BOOT SEQUENCE
+        await printLine(">>> Booting system...");
+        await delay(1000);
+
+        // HUD powers on
+        hud.style.opacity = 1;
+        await delay(800);
+        await printLine(">>> System booted.");
+        await delay(800);
+
+        await printLine(">>> Initialising upgrades...");
+        await delay(1200);
+        shop.style.opacity = 1;
+        await delay(800);
+        await printLine(">>> Upgrade interface initialized.");
+
+        await printLine(">>> System ready.");
+
+        setInputEnabled(true);
+        state.phase = "idle";
+      }
+
+      const upgrades = {
+        overclock: {
+          key: "1",
+          getLevel: () => state.overclockLevel,
+          getCost: () => 50 + state.overclockLevel * 50,
+          purchase: () => {
+            state.overclockLevel++;
+            state.scanTime = Math.max(1000, state.scanTime * 0.85);
+            printLine("CPU Overclocked. Scan speed increased.");
+          },
+        },
+      };
+
+      function updateShop() {
+        if (state.layer === 0) return;
+
+        let output = "";
+
+        for (const id in upgrades) {
+          const upg = upgrades[id];
+          const level = upg.getLevel();
+          const cost = upg.getCost();
+
+          output += `[${upg.key}] Overclock CPU (Lv ${level})
+Cost: ${cost} BW\n\n`;
         }
+
+        shop.innerText = output;
       }
 
       // == Clicky clicky ==
+      function setInputEnabled(enabled) {
+        if (enabled) {
+          document.body.style.pointerEvents = "auto";
+        } else {
+          document.body.style.pointerEvents = "none";
+        }
+      }
+
       document.body.addEventListener("click", handleClick);
 
       document.addEventListener("keydown", (e) => {
-        if (e.key === "1") {
-          buyOverclock();
+        for (const id in upgrades) {
+          const upg = upgrades[id];
+          if (e.key === upg.key) {
+            const cost = upg.getCost();
+            if (state.bandwidth >= cost) {
+              state.bandwidth -= cost;
+              upg.purchase();
+            }
+          }
         }
       });
+
+      async function boot() {
+        setInputEnabled(false);
+
+        if (devMode) {
+          initialiseLayer(devLayer);
+          terminal.innerHTML = "";
+          await printLine(">>> DEV MODE ACTIVE");
+          await printLine(">>> Layer " + devLayer + " initialised.");
+        } else {
+          initialiseLayer(0);
+          await printLine(">>> Click to type.");
+        }
+
+        setInputEnabled(true);
+      }
+
+      boot();
 
       updateHUD();
       requestAnimationFrame(gameLoop);
