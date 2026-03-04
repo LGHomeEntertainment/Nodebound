@@ -15,6 +15,8 @@
         height: 100vh;
 
         user-select: none; /* disables text highlight */
+        -webkit-user-select: none; /* Safari */
+        -webkit-touch-callout: none; /* iOS Safari */
       }
 
       #blackscreen {
@@ -29,10 +31,13 @@
       #gameArea {
         position: relative;
         width: 800px;
+        max-width: 95vw;
         height: 500px;
+        max-height: 90vh;
         padding: 15px;
         display: flex;
         flex-direction: column;
+        touch-action: manipulation; /* improves touch response */
       }
 
       .framed {
@@ -62,6 +67,8 @@
         color: #33ff33;
         cursor: pointer;
         opacity: 0.8;
+        padding: 5px;
+        display: inline-block;
       }
 
       #shopButton:hover {
@@ -75,7 +82,8 @@
         transform: translate(-50%, -50%);
 
         width: 350px;
-        background: darkgray;
+        max-width: 85vw;
+        background: #1a1a1a;
         border: 2px solid #33ff33;
         padding: 15px;
         color: #33ff33;
@@ -89,6 +97,38 @@
       #shopPanel.open {
         opacity: 1;
         pointer-events: auto;
+      }
+
+      .upgrade-item {
+        margin: 10px 0;
+        padding: 8px;
+        border: 1px solid #33ff33;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+
+      .upgrade-item:hover {
+        background: #2a2a2a;
+      }
+
+      .upgrade-item.affordable {
+        color: #33ff33;
+      }
+
+      .upgrade-item.unaffordable {
+        color: #666;
+      }
+
+      #closeShop {
+        margin-top: 15px;
+        text-align: center;
+        cursor: pointer;
+        padding: 5px;
+        border: 1px solid #33ff33;
+      }
+
+      #closeShop:hover {
+        background: #2a2a2a;
       }
 
       .cursor {
@@ -146,7 +186,10 @@
         > <span id="command"></span><span class="cursor"></span>
       </div>
       <div id="shopButton">[ Upgrades ]</div>
-      <div id="shopPanel"></div>
+      <div id="shopPanel">
+        <div id="shopContent"></div>
+        <div id="closeShop">[ Close ]</div>
+      </div>
     </div>
 
     <script>
@@ -160,6 +203,8 @@
       const black = document.getElementById("blackscreen");
       const shopButton = document.getElementById("shopButton");
       const shopPanel = document.getElementById("shopPanel");
+      const shopContent = document.getElementById("shopContent");
+      const closeShop = document.getElementById("closeShop");
       let shopOpen = false;
 
       // =======================
@@ -193,28 +238,57 @@
       const upgrades = {
         overclock: {
           key: "1",
+          name: "CPU Overclock",
+          desc: "Reduces scan time",
           getLevel: () => state.overclockLevel,
           getCost: () => 50 + state.overclockLevel * 50,
           purchase: () => {
             state.overclockLevel++;
             state.scanTime = Math.max(1000, state.scanTime * 0.85);
             printLine("CPU Overclocked. Scan speed increased.");
+            renderShop();
           },
         },
       };
 
       function renderShop() {
-        let output = "=== Upgrade Interface ===\n\n";
+        let output = "<div style='text-align: center; margin-bottom: 15px; font-size: 16px;'>═══ UPGRADES ═══</div>";
 
         for (const id in upgrades) {
           const upg = upgrades[id];
           const level = upg.getLevel();
           const cost = upg.getCost();
+          const affordable = state.bandwidth >= cost;
+          const affordClass = affordable ? "affordable" : "unaffordable";
 
-          output += `${upg.key}) CPU Overclock (Lv ${level}) .... ${cost} BW\n`;
+          output += `<div class="upgrade-item ${affordClass}" data-upgrade="${id}">`;
+          output += `<div>[${upg.key}] ${upg.name} (Lv ${level})</div>`;
+          output += `<div style="font-size: 12px; margin-top: 3px;">${upg.desc}</div>`;
+          output += `<div style="margin-top: 5px;">Cost: ${cost} BW</div>`;
+          output += `</div>`;
         }
 
-        shopPanel.innerText = output;
+        shopContent.innerHTML = output;
+
+        // Add click handlers to upgrade items
+        document.querySelectorAll(".upgrade-item").forEach(item => {
+          item.addEventListener("click", handleUpgradeClick);
+          item.addEventListener("touchstart", handleUpgradeClick);
+        });
+      }
+
+      function handleUpgradeClick(e) {
+        e.stopPropagation();
+        const upgradeId = e.currentTarget.dataset.upgrade;
+        const upg = upgrades[upgradeId];
+        if (!upg) return;
+
+        const cost = upg.getCost();
+        if (state.bandwidth >= cost) {
+          state.bandwidth -= cost;
+          upg.purchase();
+          updateHUD();
+        }
       }
 
       // =======================
@@ -246,23 +320,6 @@
           bwPerSec.toFixed(2);
       }
 
-      function updateShop() {
-        if (state.layer === 0) return;
-
-        let output = "";
-
-        for (const id in upgrades) {
-          const upg = upgrades[id];
-          const level = upg.getLevel();
-          const cost = upg.getCost();
-
-          output += `[${upg.key}] Overclock CPU (Lv ${level})
-Cost: ${cost} BW\n\n`;
-        }
-
-        shop.innerText = output;
-      }
-
       // =======================
       // INPUT SYSTEM
       // =======================
@@ -272,7 +329,7 @@ Cost: ${cost} BW\n\n`;
         return null;
       }
 
-      function handleClick() {
+      function handleClick(e) {
         if (shopOpen) return;  
         if (state.phase !== "idle" && state.phase !== "connect_ready") return;
 
@@ -289,11 +346,17 @@ Cost: ${cost} BW\n\n`;
         }
       }
 
-      document
-        .getElementById("gameArea")
-        .addEventListener("click", handleClick);
+      // Universal click/tap handler
+      gameArea.addEventListener("click", handleClick);
+      gameArea.addEventListener("touchstart", (e) => {
+        e.preventDefault(); // Prevent double-firing on mobile
+        handleClick(e);
+      });
 
+      // Keyboard shortcuts for upgrades
       document.addEventListener("keydown", (e) => {
+        if (shopOpen) return;
+        
         for (const id in upgrades) {
           const upg = upgrades[id];
           if (e.key === upg.key) {
@@ -301,12 +364,14 @@ Cost: ${cost} BW\n\n`;
             if (state.bandwidth >= cost) {
               state.bandwidth -= cost;
               upg.purchase();
+              updateHUD();
             }
           }
         }
       });
 
-      shopButton.addEventListener("click", (e) => {
+      // Shop button handlers
+      function toggleShop(e) {
         e.stopPropagation();
         shopOpen = !shopOpen;
 
@@ -316,9 +381,32 @@ Cost: ${cost} BW\n\n`;
         } else {
           shopPanel.classList.remove("open");
         }
+      }
+
+      shopButton.addEventListener("click", toggleShop);
+      shopButton.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        toggleShop(e);
+      });
+
+      closeShop.addEventListener("click", (e) => {
+        e.stopPropagation();
+        shopOpen = false;
+        shopPanel.classList.remove("open");
+      });
+
+      closeShop.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        shopOpen = false;
+        shopPanel.classList.remove("open");
       });
 
       shopPanel.addEventListener("click", (e) => {
+        e.stopPropagation();
+      });
+
+      shopPanel.addEventListener("touchstart", (e) => {
         e.stopPropagation();
       });
 
