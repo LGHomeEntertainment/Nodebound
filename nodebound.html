@@ -134,8 +134,7 @@
       .cursor {
         display: inline-block;
         width: 10px;
-        background: #33ff33;
-        animation: blink 1s infinite;
+        animation: blink 2s infinite;
       }
 
       @keyframes blink {
@@ -183,7 +182,7 @@
       <div id="hud"></div>
       <div id="terminal"></div>
       <div id="input">
-        > <span id="command"></span><span class="cursor"></span>
+        > <span id="command"></span><span class="cursor">_</span>
       </div>
       <div id="shopButton">[ Upgrades ]</div>
       <div id="shopPanel">
@@ -200,6 +199,7 @@
       const terminal = document.getElementById("terminal");
       const commandEl = document.getElementById("command");
       const gameArea = document.getElementById("gameArea");
+      let input = document.getElementById("input");
       const black = document.getElementById("blackscreen");
       const shopButton = document.getElementById("shopButton");
       const shopPanel = document.getElementById("shopPanel");
@@ -252,7 +252,8 @@
       };
 
       function renderShop() {
-        let output = "<div style='text-align: center; margin-bottom: 15px; font-size: 16px;'>═══ UPGRADES ═══</div>";
+        let output =
+          "<div style='text-align: center; margin-bottom: 15px; font-size: 16px;'>═══ UPGRADES ═══</div>";
 
         for (const id in upgrades) {
           const upg = upgrades[id];
@@ -271,7 +272,7 @@
         shopContent.innerHTML = output;
 
         // Add click handlers to upgrade items
-        document.querySelectorAll(".upgrade-item").forEach(item => {
+        document.querySelectorAll(".upgrade-item").forEach((item) => {
           item.addEventListener("click", handleUpgradeClick);
           item.addEventListener("touchstart", handleUpgradeClick);
         });
@@ -330,7 +331,7 @@
       }
 
       function handleClick(e) {
-        if (shopOpen) return;  
+        if (shopOpen) return;
         if (state.phase !== "idle" && state.phase !== "connect_ready") return;
 
         const expected = getExpectedCommand();
@@ -356,7 +357,7 @@
       // Keyboard shortcuts for upgrades
       document.addEventListener("keydown", (e) => {
         if (shopOpen) return;
-        
+
         for (const id in upgrades) {
           const upg = upgrades[id];
           if (e.key === upg.key) {
@@ -532,7 +533,7 @@
         gameArea.classList.add("blinking");
         await delay(600);
         gameArea.classList.remove("blinking");
-
+        input.style.opacity = 0;
         gameArea.classList.remove("framed");
 
         black.style.opacity = 1;
@@ -574,7 +575,9 @@
         shopButton.style.opacity = 1;
         await delay(800);
         await printLine(">>> Upgrade interface initialized.");
-
+        await delay(500);
+        input.style.opacity = 1;
+        await delay(500);
         await printLine(">>> System ready.");
 
         setInputEnabled(true);
