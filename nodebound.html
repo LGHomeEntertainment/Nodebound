@@ -167,6 +167,28 @@
         }
       }
 
+      @keyframes screenShake {
+        0% {
+          transform: translate(0, 0);
+        }
+        25% {
+          transform: translate(-10, -5);
+        }
+        50% {
+          transform: translate(0, 0);
+        }
+        75% {
+          transform: translate(5, 10);
+        }
+        100% {
+          transform: translate(0, 0);
+        }
+      }
+
+      .shaking {
+        animation: screenShake 0.5s ease 2;
+      }
+
       .flash {
         animation: screenFlash 0.35s ease;
       }
@@ -476,7 +498,17 @@
           state.bandwidth += 5;
           await printLine("Node integrated. Bandwidth +5.");
 
-          if (!devMode && state.layer == 0 && state.nodes >= 1) {
+          if (!devMode && state.layer == 0) { // **edited
+            if (state.nodes == 1) {
+              state.phase = "locked";
+              await delay(1200);
+  
+              // quick flicker
+              gameArea.classList.add("flash");
+              await delay(550);
+              gameArea.classList.remove("flash");
+              state.phase = "idle";
+            } else if (state.nodes >= 2) {
             state.phase = "locked";
 
             await delay(1500);
@@ -492,10 +524,13 @@
             gameArea.classList.add("flash");
             await delay(550);
             gameArea.classList.remove("flash");
+               gameArea.classList.add("shaking");
+        await delay(600);
+        gameArea.classList.remove("shaking");
 
             await transitionToLayer1();
             return;
-          }
+          }}
           setInputEnabled(true);
           state.phase = "idle";
         }
