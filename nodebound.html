@@ -172,13 +172,13 @@
           transform: translate(0, 0);
         }
         25% {
-          transform: translate(-10, -5);
+          transform: translate(-10px, -5px);
         }
         50% {
           transform: translate(0, 0);
         }
         75% {
-          transform: translate(5, 10);
+          transform: translate(5px, 10px);
         }
         100% {
           transform: translate(0, 0);
@@ -501,11 +501,11 @@
           if (!devMode && state.layer == 0) { // **edited
             if (state.nodes == 1) {
               state.phase = "locked";
-              await delay(1200);
+              await delay(1000);
   
               // quick flicker
               gameArea.classList.add("flash");
-              await delay(550);
+              await delay(250);
               gameArea.classList.remove("flash");
               state.phase = "idle";
             } else if (state.nodes >= 2) {
