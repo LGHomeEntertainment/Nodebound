@@ -186,7 +186,7 @@
       }
 
       .shaking {
-        animation: screenShake 0.5s ease 2;
+        animation: screenShake 0.5s ease 1;
       }
 
       .flash {
@@ -232,7 +232,7 @@
       // =======================
       // CONFIG
       // =======================
-      let devMode = false;
+      let devMode = true;
       let devLayer = 1;
       let devStartBW = 500;
 
@@ -251,6 +251,7 @@
         connectTime: 1500,
 
         overclockLevel: 0,
+        autoScriptLevel: 0,
         autoLevel: 0,
       };
 
@@ -258,8 +259,26 @@
       // UPGRADE SYSTEM
       // =======================
       const upgrades = {
-        overclock: {
+        autoScript: {
           key: "1",
+          name: "Auto-Type Script",
+          desc: "Automatically performs typing every 1 second",
+          getLevel: () => state.autoLevel,
+          getCost: () => 100 + state.autoLevel * 100,
+          purchase: () => {
+            state.autoScriptLevel++;
+            if (state.autoScriptLevel === 1) {
+              startAutoScan(); //***
+            }
+            printLine(
+              "Auto-Type Script purchased. Auto-typing every 1 second.",
+            );
+            renderShop();
+          },
+        },
+
+        overclock: {
+          key: "2",
           name: "CPU Overclock",
           desc: "Reduces scan time",
           getLevel: () => state.overclockLevel,
@@ -498,39 +517,41 @@
           state.bandwidth += 5;
           await printLine("Node integrated. Bandwidth +5.");
 
-          if (!devMode && state.layer == 0) { // **edited
+          if (!devMode && state.layer == 0) {
+            // **edited
             if (state.nodes == 1) {
               state.phase = "locked";
               await delay(1000);
-  
+
               // quick flicker
               gameArea.classList.add("flash");
               await delay(250);
               gameArea.classList.remove("flash");
               state.phase = "idle";
             } else if (state.nodes >= 2) {
-            state.phase = "locked";
+              state.phase = "locked";
 
-            await delay(1500);
+              await delay(1500);
 
-            // quick flicker
-            gameArea.classList.add("flash");
-            await delay(550);
-            gameArea.classList.remove("flash");
+              // quick flicker
+              gameArea.classList.add("flash");
+              await delay(550);
+              gameArea.classList.remove("flash");
 
-            await printLine(">>> Network capacity reached.");
-            await delay(2000);
-            // quick flicker
-            gameArea.classList.add("flash");
-            await delay(550);
-            gameArea.classList.remove("flash");
-               gameArea.classList.add("shaking");
-        await delay(600);
-        gameArea.classList.remove("shaking");
+              await printLine(">>> Network capacity reached.");
+              await delay(2000);
+              // quick flicker
+              gameArea.classList.add("flash");
+              await delay(550);
+              gameArea.classList.remove("flash");
+              gameArea.classList.add("shaking");
+              await delay(600);
+              gameArea.classList.remove("shaking");
 
-            await transitionToLayer1();
-            return;
-          }}
+              await transitionToLayer1();
+              return;
+            }
+          }
           setInputEnabled(true);
           state.phase = "idle";
         }
